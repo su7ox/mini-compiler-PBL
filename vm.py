@@ -1,17 +1,16 @@
-# vm.py
 class MiniCompilerVM:
     def __init__(self, ir_code):
-        # Clean up and split the instructions
+      
         raw_lines = [line.strip() for line in ir_code.strip().split('\n') if line.strip()]
         self.instructions = []
         self.labels = {}
         
-        # Pass 1: Map all labels to their instruction index
+      
         for line in raw_lines:
             if line.endswith(':'):
                 self.labels[line[:-1]] = len(self.instructions)
             else:
-                # FIXED: maxsplit=1 ensures strings with spaces are not broken apart
+                
                 parts = line.split(maxsplit=1)
                 opcode = parts[0]
                 arg = parts[1] if len(parts) > 1 else None
@@ -21,7 +20,7 @@ class MiniCompilerVM:
         self.variables = {}
         self.call_stack = []
         self.output = []
-        self.ip = 0 # Instruction Pointer
+        self.ip = 0 
 
     def execute(self):
         while self.ip < len(self.instructions):
@@ -52,19 +51,19 @@ class MiniCompilerVM:
                 elif opcode == 'neg':
                     self.stack.append(-self.stack.pop())
                     
-                # Print
+          
                 elif opcode == 'print':
                     self.output.append(str(self.stack.pop()))
                     
-                # Jumps and Control Flow
+              
                 elif opcode == 'jmp':
                     self.ip = self.labels[arg]
                     continue
-                elif opcode == 'jz': # Jump if Zero
+                elif opcode == 'jz': 
                     if not self.stack.pop():
                         self.ip = self.labels[arg]
                         continue
-                elif opcode == 'jnz': # Jump if Not Zero
+                elif opcode == 'jnz': 
                     if self.stack.pop():
                         self.ip = self.labels[arg]
                         continue
@@ -90,7 +89,6 @@ class MiniCompilerVM:
         return "\n".join(self.output)
 
     def _handle_push(self, arg):
-        # FIXED: Safer type casting logic
         if arg == 'true': 
             self.stack.append(True)
         elif arg == 'false': 
@@ -99,14 +97,14 @@ class MiniCompilerVM:
             self.stack.append(arg.strip('"\''))
         else:
             try:
-                # Try parsing as an integer
+              
                 self.stack.append(int(arg))
             except ValueError:
                 try:
-                    # Try parsing as a float
+                 
                     self.stack.append(float(arg))
                 except ValueError:
-                    # If it's not a number or boolean, it must be a variable
+                
                     self.stack.append(self.variables.get(arg, 0))
 
     def _handle_comp(self, opcode):
