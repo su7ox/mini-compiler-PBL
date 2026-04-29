@@ -51,3 +51,13 @@ typedef struct nodeTypeTag {
 
 extern nodeType *symbolTable[SYM_LIMIT];
 extern nodeType *methodsSymbolTable[SYM_LIMIT];
+// Add this to lang.h
+typedef struct ASTNode {
+    char* type;          // e.g., "Program", "Assignment", "BinaryOp"
+    char* value;         // e.g., "+", "x", "5" (can be NULL)
+    struct ASTNode* left;
+    struct ASTNode* right;
+} ASTNode;
+
+ASTNode* createNode(char* type, char* value, ASTNode* left, ASTNode* right);
+void write_ast_json(ASTNode* root, const char* filename);
