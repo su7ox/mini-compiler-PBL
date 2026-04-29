@@ -11,7 +11,8 @@ class MiniCompilerVM:
             if line.endswith(':'):
                 self.labels[line[:-1]] = len(self.instructions)
             else:
-                parts = line.split()
+                # FIXED: maxsplit=1 ensures strings with spaces are not broken apart
+                parts = line.split(maxsplit=1)
                 opcode = parts[0]
                 arg = parts[1] if len(parts) > 1 else None
                 self.instructions.append((opcode, arg))
@@ -89,18 +90,24 @@ class MiniCompilerVM:
         return "\n".join(self.output)
 
     def _handle_push(self, arg):
-        # Determine data type and push to stack
-        if arg.isdigit() or (arg.startswith('-') and arg[1:].isdigit()):
-            self.stack.append(int(arg))
-        elif arg.replace('.', '', 1).isdigit():
-            self.stack.append(float(arg))
-        elif arg == 'true': self.stack.append(True)
-        elif arg == 'false': self.stack.append(False)
+        # FIXED: Safer type casting logic
+        if arg == 'true': 
+            self.stack.append(True)
+        elif arg == 'false': 
+            self.stack.append(False)
         elif arg.startswith('"') or arg.startswith("'"): 
             self.stack.append(arg.strip('"\''))
         else:
-            # It's a variable
-            self.stack.append(self.variables.get(arg, 0))
+            try:
+                # Try parsing as an integer
+                self.stack.append(int(arg))
+            except ValueError:
+                try:
+                    # Try parsing as a float
+                    self.stack.append(float(arg))
+                except ValueError:
+                    # If it's not a number or boolean, it must be a variable
+                    self.stack.append(self.variables.get(arg, 0))
 
     def _handle_comp(self, opcode):
         b = self.stack.pop()
