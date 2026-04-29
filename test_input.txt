@@ -1,3 +1,20 @@
-x = 5;
-y = 10;
-print x + y;
+# Variable Declarations
+int num = 5;
+int factorial = 1;
+int isLarge = 0;
+
+# While Loop & Arithmetic
+while (num > 0) {
+    factorial = factorial * num;
+    num = num - 1;
+}
+
+# Conditional Logic
+if (factorial >= 100) {
+    isLarge = 1;
+} else {
+    isLarge = 0;
+}
+
+print factorial;
+print isLarge;
