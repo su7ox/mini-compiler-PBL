@@ -43,13 +43,13 @@ int yylex(void);
 int variablesCount = 0;
 int methodsCount = 0;
 int operandsCount = 0;
-int astStmtCount = 0; /* Tracks statements for JSON commas */
+int astStmtCount = 0;
 
 %}
 
 %union {
     int iValue;                 /* integer value */
-    char sValue[100];                /* string Value */
+    char sValue[100];           /* string Value */
     bool bValue;                
     float fValue;
     nodeType *nPtr;             /* node pointer */
@@ -62,6 +62,10 @@ int astStmtCount = 0; /* Tracks statements for JSON commas */
 %token<bValue>BOOL 
 %token<sValue>VARIABLE 
 %token<sValue>METHOD METHOD_VARIABLE
+
+/* NEW C-STYLE TYPE TOKENS */
+%token TYPE_INT TYPE_FLOAT TYPE_VOID
+
 %token WHILE IF PRINT CONST METHOD_DEF FOR SWITCH CASE REPEAT UNTIL BREAK CONTINUE GE LE EQ NE GT LT AND OR MINUS PLUS MULT DIV ASSIG WRONG_VARIABLE
 %nonassoc IFX
 %nonassoc ELSE
@@ -102,7 +106,7 @@ stmt:
         | METHOD_DEF METHOD '(' methodOperand ')' '{' stmtList '}'      {$$ = defineMethod($2, $7);}
         | FOR '(' assignStmt ';' logicExpr ';' assignStmt ')' '{' stmtList '}'  {$$ = opr(FOR, 4, $3, $5, $7, $10);}
         | IF '(' logicExpr ')' '{' stmtList '}' %prec IFX               {$$ = opr(IF, 2, $3, $6);}                
-        | IF '(' logicExpr ')' '{' stmtList '}' ELSE '{' stmtList '}'   {$$ = opr(IF, 3, $3, $6, $10); }
+        | IF '(' logicExpr ')' '{' stmtList '}' ELSE '{' stmtList '}'   {$$ = opr(IF, 3, $3, $6, $10);}
         | '{' stmtList '}'                                              {$$ = $2;}
         | wrongAssigStmt                                                {}
         ;
@@ -112,22 +116,27 @@ wrongAssigStmt:
         | CONST WRONG_VARIABLE ASSIG expr                               {yyerror("wrong variable name");}
         ;
 
+/* UPDATED TO ACCEPT C-STYLE DECLARATIONS */
 assignStmt:
           VARIABLE ASSIG expr                                           {$$ = setAndDeclare($1, $3, false);}
+        | TYPE_INT VARIABLE ASSIG expr                                  {$$ = setAndDeclare($2, $4, false);}
+        | TYPE_FLOAT VARIABLE ASSIG expr                                {$$ = setAndDeclare($2, $4, false);}
+        | TYPE_VOID VARIABLE ASSIG expr                                 {$$ = setAndDeclare($2, $4, false);}
         | METHOD_VARIABLE ASSIG expr                                    {$$ = setAndDeclare($1, $3, false);}
         | CONST VARIABLE ASSIG expr                                     {$$ = setAndDeclare($2, $4, true);}
+        | CONST TYPE_INT VARIABLE ASSIG expr                            {$$ = setAndDeclare($3, $5, true);}
+        | CONST TYPE_FLOAT VARIABLE ASSIG expr                          {$$ = setAndDeclare($3, $5, true);}
         ;
-
 
 caseStmt:
            CASE val ':' stmtList BREAK ';'                              {$$ = opr(CASE, 2, $2, $4); }
-        |  CASE val ':' stmtList BREAK ';' caseStmt                     {$$ = opr(CASE, 3, $2, $4, $7); }
+        |  CASE val ':' stmtList BREAK ';' caseStmt                     {$$ = opr(CASE, 3, $2, $4, $7);}
         ;
 
 stmtList:
           stmt                  {$$ = $1;} 
-        | stmtList stmt         {$$ = opr(';', 2, $1, $2); } 
-        ; 
+        | stmtList stmt         {$$ = opr(';', 2, $1, $2);} 
+        ;
 
 expr:
           MINUS expr %prec UMINUS       {$$ = opr(UMINUS, 1, $2);}
@@ -163,76 +172,50 @@ val:
 passedOperand:
           val                                          {passOperand($1);} 
         | passedOperand ',' passedOperand            
-        |
-        ; 
+        | ; 
 
 methodOperand:
           METHOD_VARIABLE                              {addOperand($1);}
         | methodOperand ',' methodOperand            
-        |
-        ; 
+        | ; 
 
 %%
 
-
 int getDataType(nodeType *node) {
     int dataType;
-    if (node->type == typeCon) {
-        dataType = node->con.dataType;
-    }
-    else if (node->type == typeId) {
-        dataType = node->id.dataType;
-    }
-    else if (node->type == typeOpr) {
-        dataType = node->opr.dataType;
-    }
+    if (node->type == typeCon) dataType = node->con.dataType;
+    else if (node->type == typeId) dataType = node->id.dataType;
+    else if (node->type == typeOpr) dataType = node->opr.dataType;
     return dataType;
 }
 
 int isVariableDeclared(char *variableName) {
-
      for(int i = 0 ; i < variablesCount; i++) {
-        if(strcmp(symbolTable[i]->id.variableName, variableName) == 0) {
-            return i;
-        }
+        if(strcmp(symbolTable[i]->id.variableName, variableName) == 0) return i;
     }
     return -1;
 }
 
 int isMethodDeclared(char *methodName) {
-
      for(int i = 0 ; i < methodsCount; i++) {
-        if(strcmp(methodsSymbolTable[i]->mth.methodName, methodName) == 0) {
-            return i;
-        }
+        if(strcmp(methodsSymbolTable[i]->mth.methodName, methodName) == 0) return i;
     }
     return -1;
 }
 
 void addOperand(char *variableName){
     nodeType *p;
-    if ((p = malloc(sizeof(nodeType))) == NULL)
-        yyerror("out of memory");
-
+    if ((p = malloc(sizeof(nodeType))) == NULL) yyerror("out of memory");
     p->type = typeId;
     strcpy(p->id.variableName, variableName);
 
-    if(operandsCount >= METHOD_OPERANDS_LIMIT){
-        yyerror("Number of operands exceeded the limit");
-        return;
-    }
-
+    if(operandsCount >= METHOD_OPERANDS_LIMIT){ yyerror("Number of operands exceeded the limit"); return; }
     methodOperands[operandsCount] = p;
     operandsCount++;
 }
 
 void passOperand(nodeType *p){
-    
-    if(operandsCount >= METHOD_OPERANDS_LIMIT){
-        yyerror("Number of operands exceeded the limit");
-        return;
-    }
-
+    if(operandsCount >= METHOD_OPERANDS_LIMIT){ yyerror("Number of operands exceeded the limit"); return; }
     methodOperands[operandsCount] = p;
     operandsCount++;
 }
@@ -242,25 +225,19 @@ nodeType *defineMethod( char *methodName, nodeType* statements){
     nodeType *p;
     int i;
 
-    /* allocate node, extending op array */
-    if ((p = malloc(sizeof(nodeType) + (operandsCount) * sizeof(nodeType *))) == NULL)
-        yyerror("out of memory");
-    
+    if ((p = malloc(sizeof(nodeType) + (operandsCount) * sizeof(nodeType *))) == NULL) yyerror("out of memory");
     if (methodIndex == -1) {
-        if(methodsCount >= SYM_LIMIT){
-            yyerror("Stack Overflow");
-        }
+        if(methodsCount >= SYM_LIMIT) yyerror("Stack Overflow");
         methodIndex = methodsCount;
-        if ((methodsSymbolTable[methodIndex] = malloc(sizeof(nodeType))) == NULL)
-            yyerror("out of memory");
-
-        /* copy information */
+        if ((methodsSymbolTable[methodIndex] = malloc(sizeof(nodeType))) == NULL) yyerror("out of memory");
+        
         methodsSymbolTable[methodIndex]->type = typeMth;
         methodsSymbolTable[methodIndex]->mth.nops = operandsCount;
         strcpy(methodsSymbolTable[methodIndex]->mth.methodName, methodName);
         printSymTable(1);
+        
         p->type = typeMth;
-        p->mth.type = typeD; /* Assuming typeD is definition */
+        p->mth.type = typeD; 
         p->mth.nops = operandsCount;
         strcpy(p->mth.methodName, methodName);
 
@@ -268,33 +245,26 @@ nodeType *defineMethod( char *methodName, nodeType* statements){
             p->mth.op[i] = methodOperands[i];
         }
         p->mth.op[operandsCount] = statements;
-
         methodsCount++;
     }
-    else{
-        yyerror("Method already defined");
-    }
+    else { yyerror("Method already defined"); }
     operandsCount = 0;
     return p;
 }
 
 nodeType *callMethod(char *methodName){
     int methodIndex = isMethodDeclared(methodName);
-    if(methodIndex == -1)
-        yyerror("Method undefined");
-    else if (methodsSymbolTable[methodIndex]->mth.nops != operandsCount){
-        yyerror("Number of operands do not match with defined method");
-    }
+    if(methodIndex == -1) yyerror("Method undefined");
+    else if (methodsSymbolTable[methodIndex]->mth.nops != operandsCount) yyerror("Number of operands do not match with defined method");
 
     nodeType *p;
-    if ((p = malloc(sizeof(nodeType) + (operandsCount-1) * sizeof(nodeType *))) == NULL)
-        yyerror("out of memory");
-
+    if ((p = malloc(sizeof(nodeType) + (operandsCount-1) * sizeof(nodeType *))) == NULL) yyerror("out of memory");
+    
     p->type = typeMth;
-    p->mth.type = typeC; /* Assuming typeC is Call */
+    p->mth.type = typeC; 
     p->mth.nops = operandsCount;
     strcpy(p->mth.methodName, methodName);
-
+    
     for (int i = 0; i < operandsCount; i++) {
         p->mth.op[i] = methodOperands[i];
     }
@@ -306,13 +276,10 @@ nodeType *setAndDeclare(char *variableName, nodeType* rhs, bool isConst) {
     int variableIndex = isVariableDeclared(variableName);
     int dataType = getDataType(rhs);
     if (variableIndex == -1) {
-        if(variablesCount >= SYM_LIMIT){
-            yyerror("Stack Overflow");
-        }
+        if(variablesCount >= SYM_LIMIT) yyerror("Stack Overflow");
         variableIndex = variablesCount;
-        if ((symbolTable[variableIndex] = malloc(sizeof(nodeType))) == NULL)
-            yyerror("out of memory");
-
+        if ((symbolTable[variableIndex] = malloc(sizeof(nodeType))) == NULL) yyerror("out of memory");
+        
         symbolTable[variableIndex]->type = typeId;
         symbolTable[variableIndex]->id.dataType = dataType;
         symbolTable[variableIndex]->id.isConst = isConst;
@@ -321,12 +288,8 @@ nodeType *setAndDeclare(char *variableName, nodeType* rhs, bool isConst) {
         variablesCount++;
     }
     else {
-        if(symbolTable[variableIndex]->id.isConst){
-            yyerror("Can not change a constant value");
-        }
-        else if(symbolTable[variableIndex]->id.dataType != dataType) {
-            yyerror("Type Mismatch");
-        }
+        if(symbolTable[variableIndex]->id.isConst) yyerror("Can not change a constant value");
+        else if(symbolTable[variableIndex]->id.dataType != dataType) yyerror("Type Mismatch");
     }
     return opr(ASSIG, 2, symbolTable[variableIndex], rhs);
 }
@@ -336,12 +299,8 @@ nodeType *opr(int oper, int nops, ...) {
     va_list ap;
     nodeType *p;
     int i;
-
-    /* allocate node, extending op array */
-    if ((p = malloc(sizeof(nodeType) + (nops-1) * sizeof(nodeType *))) == NULL)
-        yyerror("out of memory");
-
-    /* copy information */
+    if ((p = malloc(sizeof(nodeType) + (nops-1) * sizeof(nodeType *))) == NULL) yyerror("out of memory");
+    
     p->type = typeOpr;
     p->opr.oper = oper;
     p->opr.nops = nops;
@@ -352,8 +311,7 @@ nodeType *opr(int oper, int nops, ...) {
     }
     va_end(ap);
     
-    if(oper == MULT || oper == PLUS || oper == DIV || oper == MINUS || oper == UMINUS)
-    {
+    if(oper == MULT || oper == PLUS || oper == DIV || oper == MINUS || oper == UMINUS) {
         int dataType = getDataType(p->opr.op[0]);
         for(int i=1; i<nops; i++) {
             if(!(p->opr.op[i]->type == typeId && p->opr.op[i]->id.variableName[0] == '@')) {
@@ -363,9 +321,7 @@ nodeType *opr(int oper, int nops, ...) {
                 }
             }
         }
-        if(p->opr.dataType != typeMissMatch) {
-            p->opr.dataType = dataType;
-        }
+        if(p->opr.dataType != typeMissMatch) p->opr.dataType = dataType;
         return p;
     }
     else if(oper == GT || oper == LT || oper == GE || oper == NE || oper == LE || oper == EQ || oper == AND || oper == OR){
@@ -376,109 +332,77 @@ nodeType *opr(int oper, int nops, ...) {
                 p->opr.dataType = typeMissMatch;
             }
         }
-        if(p->opr.dataType != typeMissMatch) {
-            p->opr.dataType = dataType;
-        }
+        if(p->opr.dataType != typeMissMatch) p->opr.dataType = dataType;
     }
     return p;
 }
 
 nodeType *id(char *s) {
     nodeType *p;
-
-    if ((p = malloc(sizeof(nodeType))) == NULL)
-        yyerror("out of memory");
+    if ((p = malloc(sizeof(nodeType))) == NULL) yyerror("out of memory");
 
     p->type = typeId;
     strcpy(p->id.variableName, s);
     
     int variableIndex = isVariableDeclared(s);
     if( variableIndex == -1) {
-        if(s[0] != '@')
-            yyerror("Using undeclared variable");
+        if(s[0] != '@') yyerror("Using undeclared variable");
     }
     else {
         p->id.dataType = symbolTable[variableIndex]->id.dataType;
     }
-
     return p;
 }
 
 nodeType *conInt(int value){
     nodeType *p;
-
-    if ((p = malloc(sizeof(nodeType))) == NULL)
-        yyerror("out of memory");
-
+    if ((p = malloc(sizeof(nodeType))) == NULL) yyerror("out of memory");
     p->type = typeCon;
     p->con.dataType = INTEGER;
     p->con.integerValue = value;
-
     return p;
 }
 nodeType *conFloat(float value){
     nodeType *p;
-
-    if ((p = malloc(sizeof(nodeType))) == NULL)
-        yyerror("out of memory");
-
+    if ((p = malloc(sizeof(nodeType))) == NULL) yyerror("out of memory");
     p->type = typeCon;
     p->con.dataType = FLOAT;
     p->con.floatValue = value;
-
     return p;
 }
 nodeType *conStr(char *value){
     nodeType *p;
-
-    if ((p = malloc(sizeof(nodeType))) == NULL)
-        yyerror("out of memory");
-
+    if ((p = malloc(sizeof(nodeType))) == NULL) yyerror("out of memory");
     p->type = typeCon;
     p->con.dataType = STRING;
     strcpy(p->con.stringValue, value);
-
     return p;
 }
 nodeType *conBool(bool value){
     nodeType *p;
-
-    if ((p = malloc(sizeof(nodeType))) == NULL)
-        yyerror("out of memory");
-
+    if ((p = malloc(sizeof(nodeType))) == NULL) yyerror("out of memory");
     p->type = typeCon;
     p->con.dataType = BOOL;
     p->con.boolValue = value;
-
     return p;
 }
 
 void yyerror(char *s) {
-    FILE * fp;
-    fp = fopen ("errors.txt","a");
+    FILE * fp = fopen ("errors.txt","a");
     fprintf(fp, "%s\n", s);
     fclose(fp);
 }
 
-void printSymTable(int choice)
-{
-    FILE * fp;
-    fp = fopen ("SymbolTable.txt","a");
-    if(choice == 0)
-    {
+void printSymTable(int choice) {
+    FILE * fp = fopen ("SymbolTable.txt","a");
+    if(choice == 0) {
         fprintf(fp, "Variable Name: %s, Is Constant: %s\n", symbolTable[variablesCount]->id.variableName, (symbolTable[variablesCount]->id.isConst)?"true":"false");
     }
-    else
-    {
+    else {
         fprintf(fp, "Method Name: %s, Number of Operands: %d\n", methodsSymbolTable[methodsCount]->mth.methodName, methodsSymbolTable[methodsCount]->mth.nops);
     }
     fclose(fp);
 }
-
-
-/* =========================================
-   AST JSON SERIALIZATION LOGIC
-========================================= */
 
 char* getOpName(int oper) {
     switch(oper) {
@@ -512,10 +436,7 @@ char* getOpName(int oper) {
 }
 
 void print_json_node(nodeType *p, FILE *fp) {
-    if (!p) {
-        fprintf(fp, "null");
-        return;
-    }
+    if (!p) { fprintf(fp, "null"); return; }
     fprintf(fp, "{");
     if (p->type == typeCon) {
         fprintf(fp, "\"type\": \"Constant\", ");
@@ -540,7 +461,6 @@ void print_json_node(nodeType *p, FILE *fp) {
     }
     else if (p->type == typeMth) {
         fprintf(fp, "\"type\": \"Method\", \"value\": \"%s\"", p->mth.methodName);
-        /* If typeD, nops is parameters, plus 1 body. If typeC, nops is parameters */
         int max_ops = p->mth.type == typeD ? p->mth.nops + 1 : p->mth.nops;
         if (max_ops > 0) {
             fprintf(fp, ", \"children\": [");
@@ -566,9 +486,7 @@ void append_ast_json(nodeType *p) {
     if(!p) return;
     FILE *fp = fopen("ast.json", "a");
     if (fp) {
-        if (astStmtCount > 0) {
-            fprintf(fp, ",\n");
-        }
+        if (astStmtCount > 0) fprintf(fp, ",\n");
         print_json_node(p, fp);
         astStmtCount++;
         fclose(fp);
@@ -577,7 +495,6 @@ void append_ast_json(nodeType *p) {
 
 void close_ast_json() {
     FILE *fp = fopen("ast.json", "a");
-    
     if (fp) {
         fprintf(fp, "\n]}\n");
         fclose(fp);
