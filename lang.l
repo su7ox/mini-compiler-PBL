@@ -4,7 +4,7 @@
 #include "y.tab.h"
 void yyerror(char *);
 
-// Helper to log tokens to a file for the Streamlit GUI Visualizer
+
 void log_token(const char* token_type, const char* lexeme) {
     FILE *fp = fopen("tokens.txt", "a");
     if (fp) {
