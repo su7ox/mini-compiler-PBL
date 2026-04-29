@@ -1,207 +1,315 @@
 import streamlit as st
+
 import subprocess
+
 import graphviz
+
 from vm import MiniCompilerVM
+
 import json  
+
 from pathlib import Path
+
 from shutil import which
 
+
+
 # Set up page config
-st.set_page_config(page_title="Mini Compiler IDE", layout="wide")
+
+st.set_page_config(page_title="Mini-C Compiler Pipeline", layout="wide")
+
+
 
 BASE_DIR = Path(__file__).resolve().parent
 
+
+
 @st.cache_resource
+
 def build_compiler_if_possible():
-    """Builds the compiler only once per session if the tools are available."""
+
     bison = which("bison")
+
     flex = which("flex")
+
     gcc = which("gcc")
 
-    if not (bison and flex and gcc):
-        return False
+    if not (bison and flex and gcc): return False
 
     try:
+
         subprocess.run([bison, "-y", str(BASE_DIR / "lang.y"), "-d"], check=True)
+
         subprocess.run([flex, str(BASE_DIR / "lang.l")], check=True)
-        subprocess.run(
-            [gcc, str(BASE_DIR / "lang.c"), str(BASE_DIR / "y.tab.c"), str(BASE_DIR / "lex.yy.c")],
-            check=True,
-        )
+
+        subprocess.run([gcc, str(BASE_DIR / "lang.c"), str(BASE_DIR / "y.tab.c"), str(BASE_DIR / "lex.yy.c")], check=True)
+
         return True
+
     except subprocess.CalledProcessError:
+
         return False
+
+
 
 def draw_ast(json_data):
+
     graph = graphviz.Digraph()
-    graph.attr(rankdir='TB', size='8,8') # Top to Bottom layout
-    
-    node_counter = [0] # Use a list to mutate inside recursive function
+
+    # Left to right layout often looks better for deep trees, but TB works too
+
+    graph.attr(rankdir='TB', size='8,8') 
+
+    node_counter = [0]
+
+
 
     def add_nodes(node_data, parent_id=None):
-        if not node_data:
-            return
-            
+
+        if not node_data: return
+
         current_id = str(node_counter[0])
+
         node_counter[0] += 1
+
         
-        # Determine the label based on if it has a value
+
         label = f"{node_data.get('type')}"
-        if 'value' in node_data:
-             label += f"\n({node_data['value']})"
+
+        if 'value' in node_data: label += f"\n({node_data['value']})"
+
              
-        # Add the physical node to the graph
-        graph.node(current_id, label, shape='box', style='filled', fillcolor='#f0f2f6')
+
+        # Modern, plain background to keep it clean
+
+        graph.node(current_id, label, shape='box', style='filled', fillcolor='#f8f9fa', color="#ced4da")
+
         
-        # Connect to parent if this isn't the root
+
         if parent_id is not None:
-            graph.edge(parent_id, current_id)
+
+            graph.edge(parent_id, current_id, color="#6c757d")
+
             
-        # Recursively process children
+
         if 'children' in node_data:
+
             for child in node_data['children']:
+
                 if child and isinstance(child, dict):
+
                     add_nodes(child, current_id)
 
+
+
     add_nodes(json_data)
+
     return graph
 
-# Initialize build
+
+
 build_success = build_compiler_if_possible()
 
-# Session State Initialization (to keep data between reruns)
-if "code" not in st.session_state:
-    st.session_state.code = ""
-if "errors" not in st.session_state:
-    st.session_state.errors = ""
-if "quadruples" not in st.session_state:
-    st.session_state.quadruples = ""
-if "symtable" not in st.session_state:
-    st.session_state.symtable = ""
-if "ast_json" not in st.session_state:
-    st.session_state.ast_json = None
+
+
+if "code" not in st.session_state: st.session_state.code = ""
+
+if "errors" not in st.session_state: st.session_state.errors = ""
+
+if "tokens" not in st.session_state: st.session_state.tokens = ""
+
+if "quadruples" not in st.session_state: st.session_state.quadruples = ""
+
+if "symtable" not in st.session_state: st.session_state.symtable = ""
+
+if "ast_json" not in st.session_state: st.session_state.ast_json = None
+
+
 
 # --- App Header ---
-st.title("Mini Compiler GUI")
 
-if not build_success and not (BASE_DIR / "a.exe").exists():
-    st.warning("⚠️ Compiler tools (Bison, Flex, GCC) not found in PATH. Make sure 'a.exe' exists.")
+st.title("⚙️ Mini-C Compiler Visualizer")
 
-# --- File Uploader ---
-uploaded_file = st.file_uploader("Import a File", type=["txt", "py", "c"])
-if uploaded_file is not None:
-    # Read the file and update the code if a new file is uploaded
-    if "last_uploaded" not in st.session_state or st.session_state.last_uploaded != uploaded_file.name:
-        st.session_state.code = uploaded_file.getvalue().decode("utf-8")
-        st.session_state.last_uploaded = uploaded_file.name
+st.markdown("Write code on the left and inspect the 5-step compilation pipeline on the right.")
 
-# --- Main Layout (3 Columns) ---
-col1, col2, col3 = st.columns(3)
 
-with col1:
-    st.subheader("My IDE")
-    # Text area for code input
-    code_input = st.text_area("Code", value=st.session_state.code, height=400, label_visibility="collapsed")
-    st.session_state.code = code_input # Save changes to state
+
+# --- Main Layout ---
+
+col_code, col_viz = st.columns([1, 1.5])
+
+
+
+with col_code:
+
+    st.subheader("Source Code")
+
+    code_input = st.text_area("Code", value=st.session_state.code, height=500, label_visibility="collapsed")
+
+    st.session_state.code = code_input
+
     
-    run_button = st.button("▶ Run Compiler", type="primary", use_container_width=True)
 
-with col2:
-    st.subheader("Symbol Table")
-    st.text_area("Symbol Table", value=st.session_state.symtable, height=400, disabled=True, label_visibility="collapsed")
+    run_button = st.button("▶ Compile & Execute", type="primary", use_container_width=True)
 
-with col3:
-    st.subheader("Quadruples")
-    st.text_area("Quadruples", value=st.session_state.quadruples, height=400, disabled=True, label_visibility="collapsed")
+
+
+with col_viz:
+
+    st.subheader("Pipeline Inspector")
+
+    tab_tok, tab_ast, tab_sym, tab_ir, tab_out = st.tabs([
+
+        "1. Lexer (Tokens)", 
+
+        "2. Parser (AST)", 
+
+        "3. Semantic (Symbols)", 
+
+        "4. IR (Quadruples)", 
+
+        "5. VM (Output)"
+
+    ])
+
+
 
 # --- Run Logic ---
+
 if run_button:
-    # Clear physical text files before running
-    (BASE_DIR / "errors.txt").write_text("")
-    (BASE_DIR / "quadruples.txt").write_text("")
-    (BASE_DIR / "SymbolTable.txt").write_text("")
-    
-    # Also clear the old AST file so it doesn't carry over on a syntax error
-    ast_path = BASE_DIR / "ast.json"
-    if ast_path.exists():
-        ast_path.unlink()
+
+    # 1. Clear all previous artifacts
+
+    for file in ["errors.txt", "quadruples.txt", "SymbolTable.txt", "tokens.txt"]:
+
+        (BASE_DIR / file).write_text("")
+
+    if (BASE_DIR / "ast.json").exists(): (BASE_DIR / "ast.json").unlink()
+
+
 
     exe_path = BASE_DIR / "a.exe"
+
     if exe_path.exists():
+
         try:
-            # Run the executable, passing the code input through stdin
+
+            # 2. Run Compiler
+
             p = subprocess.Popen(str(exe_path), stdin=subprocess.PIPE, stdout=subprocess.PIPE, cwd=str(BASE_DIR))
+
             p.communicate(code_input.encode('utf-8'))
+
             
-            # Read errors first
-            error_output = (BASE_DIR / "errors.txt").read_text()
-            st.session_state.errors = error_output
+
+            # 3. Read Output State
+
+            st.session_state.errors = (BASE_DIR / "errors.txt").read_text()
+
+            st.session_state.tokens = (BASE_DIR / "tokens.txt").read_text()
+
             
-            # If no errors, read quadruples, symbol table, and AST JSON
-            if not error_output.strip():
+
+            if not st.session_state.errors.strip():
+
                 st.session_state.quadruples = (BASE_DIR / "quadruples.txt").read_text()
+
                 st.session_state.symtable = (BASE_DIR / "SymbolTable.txt").read_text()
-                
-                # Load the AST JSON
-                if ast_path.exists():
-                    try:
-                        st.session_state.ast_json = json.loads(ast_path.read_text())
-                    except Exception as json_e:
-                        st.session_state.ast_json = None
-                        print(f"JSON Parse Error: {json_e}")
-                else:
-                    st.session_state.ast_json = None
+
+                ast_path = BASE_DIR / "ast.json"
+
+                st.session_state.ast_json = json.loads(ast_path.read_text()) if ast_path.exists() else None
+
             else:
+
                 st.session_state.quadruples = ""
+
                 st.session_state.symtable = ""
+
                 st.session_state.ast_json = None
+
                 
-            st.rerun() # Refresh the UI to display the newly loaded states
+
+            st.rerun()
+
+
 
         except Exception as e:
+
             st.session_state.errors = f"Execution failed: {e}"
+
             st.rerun()
+
     else:
-        st.session_state.errors = "Error: 'a.exe' not found. Please ensure the compiler is built."
-        st.rerun()
 
-# --- Error Console ---
-st.divider()
-st.subheader("Console / Errors")
+        st.error("Compiler executable not found.")
 
-if st.session_state.errors.strip():
-    st.error(st.session_state.errors)
-else:
-    st.success("Clean build. No syntax or semantic errors detected.")
 
-# --- Runtime Execution (VM) ---
-st.divider()
-st.subheader("🖥️ Program Output")
 
-if st.session_state.quadruples.strip():
-    # If quadruples exist (meaning it compiled successfully), run the VM!
-    try:
-        vm = MiniCompilerVM(st.session_state.quadruples)
-        program_output = vm.execute()
-        
-        if program_output:
-            st.code(program_output, language="text")
-        else:
-            st.info("Program finished executing successfully, but did not print anything.")
-    except Exception as e:
-        st.error(f"Virtual Machine crashed: {e}")
-else:
-    st.info("Write and run code using the 'print' statement to see output here.")
+# --- Tab Content Rendering ---
 
-# --- AST Visualization ---
-st.divider()
-st.subheader("Abstract Syntax Tree (AST)")
+with tab_tok:
 
-if st.session_state.ast_json:
-    try:
-        ast_graph = draw_ast(st.session_state.ast_json)
-        st.graphviz_chart(ast_graph)
-    except Exception as e:
-        st.error(f"Could not render AST Graph: {e}")
-else:
-    st.info("Run a successful, error-free build to generate the AST visualization.")
+    if st.session_state.tokens: st.code(st.session_state.tokens, language="text")
+
+    else: st.info("Tokens will appear here after compilation.")
+
+
+
+with tab_ast:
+
+    if st.session_state.ast_json:
+
+        st.graphviz_chart(draw_ast(st.session_state.ast_json), use_container_width=True)
+
+    else:
+
+        st.info("AST will be drawn here if there are no syntax errors.")
+
+
+
+with tab_sym:
+
+    if st.session_state.symtable: st.code(st.session_state.symtable, language="text")
+
+    else: st.info("Symbol Table populated during semantic analysis.")
+
+
+
+with tab_ir:
+
+    if st.session_state.quadruples: st.code(st.session_state.quadruples, language="assembly")
+
+    else: st.info("Intermediate Representation (IR) generation.")
+
+
+
+with tab_out:
+
+    if st.session_state.errors.strip():
+
+        st.error("Compilation Failed:")
+
+        st.code(st.session_state.errors, language="text")
+
+    elif st.session_state.quadruples.strip():
+
+        try:
+
+            vm = MiniCompilerVM(st.session_state.quadruples)
+
+            output = vm.execute()
+
+            if output:
+
+                st.success("Execution Successful")
+
+                st.code(output, language="console")
+
+            else:
+
+                st.warning("Program finished but did not output anything.")
+
+        except Exception as e:
+
+            st.error(f"VM Crash: {e}")
