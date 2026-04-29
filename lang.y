@@ -20,8 +20,15 @@
     void passOperand(nodeType *p);
     void yyerror(char *);
     void printSymTable(int choice);
-    static bool boolFile;
+    
+    /* AST JSON Functions */
+    void init_ast_json();
+    void close_ast_json();
+    void append_ast_json(nodeType *p);
+    void print_json_node(nodeType *p, FILE *fp);
+    char* getOpName(int oper);
 
+    static bool boolFile;
 }
 %{
 #include <stdio.h>
@@ -36,6 +43,7 @@ int yylex(void);
 int variablesCount = 0;
 int methodsCount = 0;
 int operandsCount = 0;
+int astStmtCount = 0; /* Tracks statements for JSON commas */
 
 %}
 
@@ -73,47 +81,47 @@ int operandsCount = 0;
 %%
 
 program:
-        function                {boolFile=false; exit(0);}  
+        function                {boolFile=false; close_ast_json(); exit(0);}  
         ;
 
 function:
-          function stmt         {ex($2);}
+          function stmt         {append_ast_json($2); ex($2);}
         |
         ;
 
 stmt:
-          ';'                                                                   {$$ = opr(';', 2, NULL, NULL);}
-        | PRINT expr ';'                                                        {$$ = opr(PRINT, 1, $2);}                                           
-        | BREAK ';'                                                             {$$ = opr(BREAK, 0);} 
-        | CONTINUE ';'                                                          {$$ = opr(CONTINUE, 0);} 
-        | SWITCH '(' val ')' '{' caseStmt '}'                                   {$$ = opr(SWITCH, 2, $3, $6);} 
-        | assignStmt ';'                                                        {$$ = $1;}
-        | REPEAT '{' stmtList '}' UNTIL '(' logicExpr ')' ';'                   {$$ = opr(REPEAT, 2, $3, $7);}
-        | WHILE '(' logicExpr ')' '{' stmtList '}'                              {$$ = opr(WHILE, 2, $3, $6);} 
-        | METHOD '(' passedOperand ')' ';'                                      {$$ = callMethod($1);}
-        | METHOD_DEF METHOD '(' methodOperand ')' '{' stmtList '}'              {$$ = defineMethod($2, $7);}
+          ';'                                                           {$$ = opr(';', 2, NULL, NULL);}
+        | PRINT expr ';'                                                {$$ = opr(PRINT, 1, $2);}                                         
+        | BREAK ';'                                                     {$$ = opr(BREAK, 0);} 
+        | CONTINUE ';'                                                  {$$ = opr(CONTINUE, 0);} 
+        | SWITCH '(' val ')' '{' caseStmt '}'                           {$$ = opr(SWITCH, 2, $3, $6);} 
+        | assignStmt ';'                                                {$$ = $1;}
+        | REPEAT '{' stmtList '}' UNTIL '(' logicExpr ')' ';'           {$$ = opr(REPEAT, 2, $3, $7);}
+        | WHILE '(' logicExpr ')' '{' stmtList '}'                      {$$ = opr(WHILE, 2, $3, $6);} 
+        | METHOD '(' passedOperand ')' ';'                              {$$ = callMethod($1);}
+        | METHOD_DEF METHOD '(' methodOperand ')' '{' stmtList '}'      {$$ = defineMethod($2, $7);}
         | FOR '(' assignStmt ';' logicExpr ';' assignStmt ')' '{' stmtList '}'  {$$ = opr(FOR, 4, $3, $5, $7, $10);}
-        | IF '(' logicExpr ')' '{' stmtList '}' %prec IFX                       {$$ = opr(IF, 2, $3, $6);}                
-        | IF '(' logicExpr ')' '{' stmtList '}' ELSE '{' stmtList '}'           {$$ = opr(IF, 3, $3, $6, $10); }
-        | '{' stmtList '}'                                                      {$$ = $2;}
-        | wrongAssigStmt                                                        {}
+        | IF '(' logicExpr ')' '{' stmtList '}' %prec IFX               {$$ = opr(IF, 2, $3, $6);}                
+        | IF '(' logicExpr ')' '{' stmtList '}' ELSE '{' stmtList '}'   {$$ = opr(IF, 3, $3, $6, $10); }
+        | '{' stmtList '}'                                              {$$ = $2;}
+        | wrongAssigStmt                                                {}
         ;
 
 wrongAssigStmt:        
-          WRONG_VARIABLE ASSIG expr                                             {yyerror("wrong variable name");}
-        | CONST WRONG_VARIABLE ASSIG expr                                       {yyerror("wrong variable name");}
+          WRONG_VARIABLE ASSIG expr                                     {yyerror("wrong variable name");}
+        | CONST WRONG_VARIABLE ASSIG expr                               {yyerror("wrong variable name");}
         ;
 
 assignStmt:
-          VARIABLE ASSIG expr                                                   {$$ = setAndDeclare($1, $3, false);}
-        | METHOD_VARIABLE ASSIG expr                                            {$$ = setAndDeclare($1, $3, false);}
-        | CONST VARIABLE ASSIG expr                                             {$$ = setAndDeclare($2, $4, true);}
+          VARIABLE ASSIG expr                                           {$$ = setAndDeclare($1, $3, false);}
+        | METHOD_VARIABLE ASSIG expr                                    {$$ = setAndDeclare($1, $3, false);}
+        | CONST VARIABLE ASSIG expr                                     {$$ = setAndDeclare($2, $4, true);}
         ;
 
 
 caseStmt:
-           CASE val ':' stmtList BREAK ';'                                      {$$ = opr(CASE, 2, $2, $4); }
-        |  CASE val ':' stmtList BREAK ';' caseStmt                             {$$ = opr(CASE, 3, $2, $4, $7); }
+           CASE val ':' stmtList BREAK ';'                              {$$ = opr(CASE, 2, $2, $4); }
+        |  CASE val ':' stmtList BREAK ';' caseStmt                     {$$ = opr(CASE, 3, $2, $4, $7); }
         ;
 
 stmtList:
@@ -252,7 +260,7 @@ nodeType *defineMethod( char *methodName, nodeType* statements){
         strcpy(methodsSymbolTable[methodIndex]->mth.methodName, methodName);
         printSymTable(1);
         p->type = typeMth;
-        p->mth.type = typeD;
+        p->mth.type = typeD; /* Assuming typeD is definition */
         p->mth.nops = operandsCount;
         strcpy(p->mth.methodName, methodName);
 
@@ -283,7 +291,7 @@ nodeType *callMethod(char *methodName){
         yyerror("out of memory");
 
     p->type = typeMth;
-    p->mth.type = typeC;
+    p->mth.type = typeC; /* Assuming typeC is Call */
     p->mth.nops = operandsCount;
     strcpy(p->mth.methodName, methodName);
 
@@ -297,7 +305,6 @@ nodeType *callMethod(char *methodName){
 nodeType *setAndDeclare(char *variableName, nodeType* rhs, bool isConst) {
     int variableIndex = isVariableDeclared(variableName);
     int dataType = getDataType(rhs);
-    // printf("rhs datatype %d\n", dataType);
     if (variableIndex == -1) {
         if(variablesCount >= SYM_LIMIT){
             yyerror("Stack Overflow");
@@ -311,11 +318,9 @@ nodeType *setAndDeclare(char *variableName, nodeType* rhs, bool isConst) {
         symbolTable[variableIndex]->id.isConst = isConst;
         strcpy(symbolTable[variableIndex]->id.variableName, variableName);
         printSymTable(0);
-        // printf("declaring variable %s of datatype %d\n", variableName, symbolTable[variableIndex]->id.dataType);
         variablesCount++;
     }
     else {
-        // printf("Setting variable %s of datatype %d\n", variableName, symbolTable[variableIndex]->id.dataType);
         if(symbolTable[variableIndex]->id.isConst){
             yyerror("Can not change a constant value");
         }
@@ -349,12 +354,10 @@ nodeType *opr(int oper, int nops, ...) {
     
     if(oper == MULT || oper == PLUS || oper == DIV || oper == MINUS || oper == UMINUS)
     {
-        // printf("here*******\n");
         int dataType = getDataType(p->opr.op[0]);
         for(int i=1; i<nops; i++) {
             if(!(p->opr.op[i]->type == typeId && p->opr.op[i]->id.variableName[0] == '@')) {
                 if(dataType != getDataType(p->opr.op[i])) {
-                    // printf("operand %d of type %d\n", i, getDataType(p->opr.op[i]));
                     yyerror("Type Mismatch");
                     p->opr.dataType = typeMissMatch;
                 }
@@ -472,7 +475,117 @@ void printSymTable(int choice)
     fclose(fp);
 }
 
+
+/* =========================================
+   AST JSON SERIALIZATION LOGIC
+========================================= */
+
+char* getOpName(int oper) {
+    switch(oper) {
+        case WHILE: return "WHILE";
+        case IF: return "IF";
+        case PRINT: return "PRINT";
+        case FOR: return "FOR";
+        case SWITCH: return "SWITCH";
+        case CASE: return "CASE";
+        case REPEAT: return "REPEAT";
+        case UNTIL: return "UNTIL";
+        case BREAK: return "BREAK";
+        case CONTINUE: return "CONTINUE";
+        case GE: return ">=";
+        case LE: return "<=";
+        case EQ: return "==";
+        case NE: return "!=";
+        case GT: return ">";
+        case LT: return "<";
+        case AND: return "AND";
+        case OR: return "OR";
+        case MINUS: return "-";
+        case UMINUS: return "- (unary)";
+        case PLUS: return "+";
+        case MULT: return "*";
+        case DIV: return "/";
+        case ASSIG: return "=";
+        case ';': return "Statement Seq";
+        default: return "Unknown Op";
+    }
+}
+
+void print_json_node(nodeType *p, FILE *fp) {
+    if (!p) {
+        fprintf(fp, "null");
+        return;
+    }
+    fprintf(fp, "{");
+    if (p->type == typeCon) {
+        fprintf(fp, "\"type\": \"Constant\", ");
+        if (p->con.dataType == INTEGER) fprintf(fp, "\"value\": \"%d\"", p->con.integerValue);
+        else if (p->con.dataType == FLOAT) fprintf(fp, "\"value\": \"%f\"", p->con.floatValue);
+        else if (p->con.dataType == STRING) fprintf(fp, "\"value\": \\\"%s\\\"", p->con.stringValue); 
+        else if (p->con.dataType == BOOL) fprintf(fp, "\"value\": \"%s\"", p->con.boolValue ? "true" : "false");
+    }
+    else if (p->type == typeId) {
+        fprintf(fp, "\"type\": \"Identifier\", \"value\": \"%s\"", p->id.variableName);
+    }
+    else if (p->type == typeOpr) {
+        fprintf(fp, "\"type\": \"Operator\", \"value\": \"%s\"", getOpName(p->opr.oper));
+        if (p->opr.nops > 0) {
+            fprintf(fp, ", \"children\": [");
+            for (int i = 0; i < p->opr.nops; i++) {
+                print_json_node(p->opr.op[i], fp);
+                if (i < p->opr.nops - 1) fprintf(fp, ", ");
+            }
+            fprintf(fp, "]");
+        }
+    }
+    else if (p->type == typeMth) {
+        fprintf(fp, "\"type\": \"Method\", \"value\": \"%s\"", p->mth.methodName);
+        /* If typeD, nops is parameters, plus 1 body. If typeC, nops is parameters */
+        int max_ops = p->mth.type == typeD ? p->mth.nops + 1 : p->mth.nops;
+        if (max_ops > 0) {
+            fprintf(fp, ", \"children\": [");
+            for(int i=0; i<max_ops; i++) {
+                print_json_node(p->mth.op[i], fp);
+                if (i < max_ops - 1) fprintf(fp, ", ");
+            }
+            fprintf(fp, "]");
+        }
+    }
+    fprintf(fp, "}");
+}
+
+void init_ast_json() {
+    FILE *fp = fopen("ast.json", "w");
+    if (fp) {
+        fprintf(fp, "{\"type\": \"Program\", \"children\": [\n");
+        fclose(fp);
+    }
+}
+
+void append_ast_json(nodeType *p) {
+    if(!p) return;
+    FILE *fp = fopen("ast.json", "a");
+    if (fp) {
+        if (astStmtCount > 0) {
+            fprintf(fp, ",\n");
+        }
+        print_json_node(p, fp);
+        astStmtCount++;
+        fclose(fp);
+    }
+}
+
+void close_ast_json() {
+    FILE *fp = fopen("ast.json", "a");
+    
+    if (fp) {
+        fprintf(fp, "\n]}\n");
+        fclose(fp);
+    }
+}
+
 int main(void) {
+    init_ast_json();
     yyparse();
     return 0;
 }
