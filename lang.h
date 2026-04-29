@@ -1,9 +1,13 @@
+#ifndef LANG_H
+#define LANG_H
+
 #include <stdbool.h>
+
 #define SYM_LIMIT 100
 #define METHOD_OPERANDS_LIMIT 10
+
 typedef enum { typeCon, typeId, typeOpr, typeMth } nodeEnum;
 typedef enum { typeD, typeC} nodeMethodType;
-// typedef enum { typeMissMatch } nodeDataType;
 
 /* constants */
 typedef struct {
@@ -25,39 +29,42 @@ typedef struct {
 /* operators */
 typedef struct {
     int dataType;
-    int oper;                   /* operator */
-    int nops;                   /* number of operands */
-    struct nodeTypeTag *op[1];	/* operands, extended at runtime */
+    int oper;                  
+    int nops;                  
+    struct nodeTypeTag *op[1];	
 } oprNodeType;
 
 /* method operands */
 typedef struct {
     nodeMethodType type;
-    char methodName[100];       /* method name */
-    int nops;                   /* number of operands */
-    struct nodeTypeTag *op[1];	/* operands, extended at runtime */
+    char methodName[100];       
+    int nops;                   
+    struct nodeTypeTag *op[1];	
 } methodNodeType;
 
 typedef struct nodeTypeTag {
-    nodeEnum type;              /* type of node */
+    nodeEnum type;              
 
     union {
-        conNodeType con;        /* constants */
-        idNodeType id;          /* identifiers */
-        oprNodeType opr;        /* operators */
-        methodNodeType mth;     /* methods */
+        conNodeType con;       
+        idNodeType id;         
+        oprNodeType opr;        
+        methodNodeType mth;     
     };
 } nodeType;
 
 extern nodeType *symbolTable[SYM_LIMIT];
 extern nodeType *methodsSymbolTable[SYM_LIMIT];
-// Add this to lang.h
+
+/* AST Node Structure */
 typedef struct ASTNode {
-    char* type;          // e.g., "Program", "Assignment", "BinaryOp"
-    char* value;         // e.g., "+", "x", "5" (can be NULL)
+    char* type;         
+    char* value;         
     struct ASTNode* left;
     struct ASTNode* right;
 } ASTNode;
 
 ASTNode* createNode(char* type, char* value, ASTNode* left, ASTNode* right);
 void write_ast_json(ASTNode* root, const char* filename);
+
+#endif 
