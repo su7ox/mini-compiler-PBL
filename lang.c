@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include "y.tab.h"
-
+#include "lang.h"
 static int lbl;
 static int breakLabel;
 static int continueLabel;
